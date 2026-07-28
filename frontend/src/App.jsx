@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Upload, FileText, Download, Loader2, CheckCircle, FilePlus, Zap } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 export default function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -23,7 +25,7 @@ export default function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/api/transcribe', {
+      const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
         method: 'POST',
         body: formData,
       });
@@ -45,7 +47,7 @@ export default function App() {
   const handleExport = async (format) => {
     if (!text) return;
     try {
-      const response = await fetch('http://localhost:8000/api/export', {
+      const response = await fetch(`${API_BASE_URL}/api/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, format }),
