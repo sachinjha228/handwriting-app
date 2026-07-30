@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { 
   Upload, FileText, Download, Loader2, CheckCircle, FilePlus, 
-  Zap, Copy, Check, History, X, Trash2, Globe, Camera, Sparkles 
+  Zap, Copy, Check, History, X, Trash2, Globe, Camera, Sparkles,
+  ArrowLeft, Users, MonitorPlay
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -29,6 +30,7 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [view, setView] = useState('home');
 
   // Camera States & Ref
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -227,6 +229,12 @@ export default function App() {
             </h1>
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setView('about')}
+              className="text-sm font-medium text-gray-700 hover:text-blue-600 transition"
+            >
+              About
+            </button>
             <button 
               onClick={() => setIsHistoryOpen(true)}
               className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium px-4 py-2.5 rounded-xl transition"
@@ -248,17 +256,68 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-6 md:p-10">
-        <header className="mb-12 border-b border-gray-200 pb-8">
-          <h2 className="text-4xl font-extrabold text-gray-950 tracking-tighter">Handwriting to Document</h2>
-          <p className="text-lg text-gray-600 mt-3 max-w-2xl">
-            Upload handwritten images, take photos, or upload PDFs and convert them into editable .DOCX or print-ready .PDF files using AI.
-          </p>
-        </header>
+        {view === 'about' ? (
+          <section className="space-y-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-blue-600 uppercase tracking-[0.25em]">About InkSync</p>
+                <h2 className="text-4xl font-extrabold text-gray-950 tracking-tighter mt-2">Built for effortless handwriting workflow</h2>
+              </div>
+              <button
+                onClick={() => setView('home')}
+                className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium px-4 py-2.5 rounded-xl transition"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back</span>
+              </button>
+            </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-          
-          {/* Upload & Camera Section */}
-          <section className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="bg-blue-50 p-3 rounded-2xl">
+                    <MonitorPlay className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-950">Web features</h3>
+                </div>
+                <ul className="space-y-3 text-gray-600">
+                  <li>• Upload handwritten images, camera snapshots, or PDFs from your browser.</li>
+                  <li>• Convert notes into editable text with AI-powered transcription.</li>
+                  <li>• Clean up grammar, fix formatting, and export to DOCX or PDF.</li>
+                  <li>• Keep a history of recent conversions for quick revisits.</li>
+                </ul>
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl p-8 text-white shadow-sm">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="bg-white/20 p-3 rounded-2xl">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-bold">InkSync Community</h3>
+                </div>
+                <p className="text-blue-50 leading-7">
+                  Join the InkSync community to share ideas, discover new workflows, and help improve handwriting-to-document experiences for students, professionals, and creators.
+                </p>
+                <div className="mt-6 rounded-2xl bg-white/10 p-4 border border-white/20">
+                  <p className="font-semibold">Be part of the future of smart note-taking.</p>
+                  <p className="text-sm text-blue-100 mt-1">Connect, collaborate, and grow with the InkSync community.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <>
+            <header className="mb-12 border-b border-gray-200 pb-8">
+              <h2 className="text-4xl font-extrabold text-gray-950 tracking-tighter">Handwriting to Document</h2>
+              <p className="text-lg text-gray-600 mt-3 max-w-2xl">
+                Upload handwritten images, take photos, or upload PDFs and convert them into editable .DOCX or print-ready .PDF files using AI.
+              </p>
+            </header>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              
+              {/* Upload & Camera Section */}
+              <section className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between">
             <div>
               {/* Header with Camera Action */}
               <div className="flex items-center justify-between mb-6">
@@ -445,9 +504,11 @@ export default function App() {
           </section>
         </div>
 
-        <footer className="mt-20 border-t border-gray-200 pt-10 text-center text-sm text-gray-500">
-          InkSync &copy; 2026.
-        </footer>
+            <footer className="mt-20 border-t border-gray-200 pt-10 text-center text-sm text-gray-500">
+              InkSync &copy; 2026.
+            </footer>
+          </>
+        )}
       </main>
 
       {/* Live Web Camera Modal */}
