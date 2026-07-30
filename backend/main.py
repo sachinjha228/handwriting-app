@@ -220,6 +220,29 @@ class AnalyzeRequest(BaseModel):
     prompt: Optional[str] = None
 
 
+class MathRequest(BaseModel):
+    text: str
+
+
+class TableRequest(BaseModel):
+    text: str
+
+
+class QuizRequest(BaseModel):
+    text: str
+    count: Optional[int] = 5
+
+
+class CorrectionRequest(BaseModel):
+    text: str
+    correction: str
+
+
+class CertificateRequest(BaseModel):
+    text: str
+    signer: Optional[str] = "InkSync"
+
+
 def _clean_transcription_text(text: str) -> str:
     if not text:
         return ""
@@ -375,6 +398,148 @@ async def analyze_notes(payload: AnalyzeRequest):
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(exc)}")
+
+
+@app.post("/api/extract-math")
+async def extract_math(payload: MathRequest):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    try:
+        prompt = f"""
+        Read the notes and identify any handwritten math or scientific formulas.
+        Return ONLY valid JSON in this structure:
+        {{"math": [{{"latex": "...", "description": "..."}}]}}
+
+        Notes:
+        {payload.text}
+        """
+        raw_text = await asyncio.to_thread(_call_gemini_text, prompt)
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            parsed = {"math": [{"latex": raw_text, "description": "Detected formula"}]}
+        return {"math": parsed.get("math", [])}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Math extraction failed: {str(exc)}")
+
+
+@app.post("/api/extract-table")
+async def extract_table(payload: TableRequest):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    try:
+        prompt = f"""
+        Read the notes and detect if they contain a table, ledger, or grid-like structure.
+        Return ONLY valid JSON in this structure:
+        {{"headers": ["col1", "col2"], "rows": [["r1c1", "r1c2"], ["r2c1", "r2c2"]]}}
+
+        Notes:
+        {payload.text}
+        """
+        raw_text = await asyncio.to_thread(_call_gemini_text, prompt)
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            parsed = {"headers": [], "rows": []}
+
+        headers = parsed.get("headers", [])
+        rows = parsed.get("rows", [])
+
+        def to_csv(headers_value, rows_value):
+            lines = []
+            if headers_value:
+                lines.append(",".join(str(item) for item in headers_value))
+            for row in rows_value:
+                lines.append(",".join(str(item) for item in row))
+            return "\n".join(lines)
+
+        return {"csv": to_csv(headers, rows), "headers": headers, "rows": rows}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Table extraction failed: {str(exc)}")
+
+
+@app.post("/api/generate-quiz")
+async def generate_quiz(payload: QuizRequest):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    try:
+        prompt = f"""
+        Turn the notes into study flashcards.
+        Return ONLY valid JSON in this structure:
+        {{"flashcards": [{{"question": "...", "answer": "..."}}]}}
+        Make {payload.count or 5} flashcards.
+
+        Notes:
+        {payload.text}
+        """
+        raw_text = await asyncio.to_thread(_call_gemini_text, prompt)
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            parsed = {"flashcards": []}
+        return {"flashcards": parsed.get("flashcards", [])}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(exc)}")
+
+
+@app.post("/api/apply-correction")
+async def apply_correction(payload: CorrectionRequest):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    try:
+        prompt = f"""
+        Integrate the user's correction into the note text.
+        Keep the meaning of the original note, but reflect the correction clearly.
+        Return ONLY the updated text.
+
+        Original text:
+        {payload.text}
+
+        Correction:
+        {payload.correction}
+        """
+        corrected_text = await asyncio.to_thread(_call_gemini_text, prompt)
+        return {"text": corrected_text}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Correction failed: {str(exc)}")
+
+
+@app.post("/api/generate-certificate")
+async def generate_certificate(payload: CertificateRequest):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 12, "InkSync Authenticity Certificate", ln=True, align="C")
+        pdf.ln(6)
+        pdf.set_font("Helvetica", size=12)
+        pdf.multi_cell(0, 8, "This document confirms that the handwritten content below was digitized and preserved using InkSync.")
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.multi_cell(0, 8, payload.text)
+        pdf.ln(10)
+        pdf.set_font("Helvetica", size=11)
+        pdf.multi_cell(0, 6, f"Signed by: {payload.signer or 'InkSync'}")
+        pdf.multi_cell(0, 6, f"Generated at: {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+
+        buffer = io.BytesIO()
+        buffer.write(pdf.output(dest='S').encode('latin-1'))
+        buffer.seek(0)
+
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=inksync_certificate.pdf"},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Certificate generation failed: {str(exc)}")
 
 
 @app.post("/api/export")

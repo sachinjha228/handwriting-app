@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { 
   Upload, FileText, Download, Loader2, CheckCircle, FilePlus, 
   Zap, Copy, Check, History, X, Trash2, Globe, Camera, Sparkles,
-  ArrowLeft, Users, MonitorPlay, MessageSquareText, Volume2, Tags
+  ArrowLeft, Users, MonitorPlay, MessageSquareText, Volume2, Tags, Sigma,
+  Table2, Brain, PenLine, ShieldCheck
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -39,6 +40,16 @@ export default function App() {
   const [tags, setTags] = useState([]);
   const [category, setCategory] = useState('General');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [mathResult, setMathResult] = useState([]);
+  const [tableResult, setTableResult] = useState(null);
+  const [quizResult, setQuizResult] = useState([]);
+  const [correctionText, setCorrectionText] = useState('');
+  const [correctionOutput, setCorrectionOutput] = useState('');
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [mathLoading, setMathLoading] = useState(false);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [correctionLoading, setCorrectionLoading] = useState(false);
+  const [activeTool, setActiveTool] = useState('assistant');
 
   // Camera States & Ref
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -259,6 +270,98 @@ export default function App() {
     }
   };
 
+  const handleExtractMath = async () => {
+    if (!text) return;
+    setMathLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/extract-math`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await response.json();
+      setMathResult(data.math || []);
+    } catch (err) {
+      setMathResult([]);
+    } finally {
+      setMathLoading(false);
+    }
+  };
+
+  const handleExtractTable = async () => {
+    if (!text) return;
+    setTableLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/extract-table`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await response.json();
+      setTableResult(data);
+    } catch (err) {
+      setTableResult({ csv: '', headers: [], rows: [] });
+    } finally {
+      setTableLoading(false);
+    }
+  };
+
+  const handleGenerateQuiz = async () => {
+    if (!text) return;
+    setQuizLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/generate-quiz`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, count: 5 }),
+      });
+      const data = await response.json();
+      setQuizResult(data.flashcards || []);
+    } catch (err) {
+      setQuizResult([]);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const handleApplyCorrection = async () => {
+    if (!text || !correctionText) return;
+    setCorrectionLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/apply-correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, correction: correctionText }),
+      });
+      const data = await response.json();
+      setCorrectionOutput(data.text || '');
+      if (data.text) setText(data.text);
+    } catch (err) {
+      setCorrectionOutput('Unable to apply correction.');
+    } finally {
+      setCorrectionLoading(false);
+    }
+  };
+
+  const handleDownloadCertificate = async () => {
+    if (!text) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/generate-certificate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, signer: 'InkSync Community' }),
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'inksync_certificate.pdf';
+      a.click();
+    } catch (err) {
+      alert('Certificate generation failed');
+    }
+  };
+
   const handleSelectHistoryItem = (item) => {
     setText(item.text);
     if (item.language) setSelectedLanguage(item.language);
@@ -269,6 +372,15 @@ export default function App() {
     setHistory([]);
     localStorage.removeItem('inksync_history');
   };
+
+  const toolTabs = [
+    { key: 'assistant', label: 'Assistant', icon: MessageSquareText },
+    { key: 'math', label: 'Math', icon: Sigma },
+    { key: 'table', label: 'Tables', icon: Table2 },
+    { key: 'quiz', label: 'Quiz', icon: Brain },
+    { key: 'correction', label: 'Corrections', icon: PenLine },
+    { key: 'certificate', label: 'Certificate', icon: ShieldCheck },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -592,26 +704,134 @@ export default function App() {
               </div>
 
               <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
-                <div className="flex items-center space-x-2 mb-2">
-                  <MessageSquareText className="w-4 h-4 text-blue-600" />
-                  <h4 className="font-semibold text-gray-900">Ask My Notes</h4>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {toolTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTool === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveTool(tab.key)}
+                        className={`flex items-center space-x-2 px-3 py-2 rounded-full text-sm font-medium transition ${
+                          isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <textarea
-                  value={analysisPrompt}
-                  onChange={(e) => setAnalysisPrompt(e.target.value)}
-                  className="w-full h-20 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
-                  placeholder="Summarize this meeting note into 3 action items..."
-                />
-                <button
-                  onClick={handleAnalyze}
-                  disabled={!text || analysisLoading}
-                  className="w-full mt-3 bg-indigo-600 text-white font-semibold py-3 rounded-2xl hover:bg-indigo-700 disabled:opacity-40 transition"
-                >
-                  {analysisLoading ? 'Thinking...' : 'Ask AI'}
-                </button>
-                {analysisAnswer && (
-                  <div className="mt-3 rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">
-                    {analysisAnswer}
+
+                {activeTool === 'assistant' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <MessageSquareText className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Ask My Notes</h4>
+                    </div>
+                    <textarea
+                      value={analysisPrompt}
+                      onChange={(e) => setAnalysisPrompt(e.target.value)}
+                      className="w-full h-20 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                      placeholder="Summarize this meeting note into 3 action items..."
+                    />
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={!text || analysisLoading}
+                      className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-2xl hover:bg-indigo-700 disabled:opacity-40 transition"
+                    >
+                      {analysisLoading ? 'Thinking...' : 'Ask AI'}
+                    </button>
+                    {analysisAnswer && (
+                      <div className="rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">
+                        {analysisAnswer}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTool === 'math' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Sigma className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Math & Formula Helper</h4>
+                    </div>
+                    <button onClick={handleExtractMath} disabled={!text || mathLoading} className="w-full bg-sky-600 text-white py-2.5 rounded-xl font-medium">
+                      {mathLoading ? 'Detecting...' : 'Extract LaTeX Math'}
+                    </button>
+                    {mathResult.length > 0 && (
+                      <div className="space-y-2">
+                        {mathResult.map((item, idx) => (
+                          <div key={idx} className="rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">
+                            <div className="font-semibold text-gray-900">{item.description || 'Formula'}</div>
+                            <div className="mt-1 text-blue-700">{item.latex}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTool === 'table' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Table2 className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Table & Grid Extractor</h4>
+                    </div>
+                    <button onClick={handleExtractTable} disabled={!text || tableLoading} className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-medium">
+                      {tableLoading ? 'Parsing...' : 'Turn Notes into CSV'}
+                    </button>
+                    {tableResult && (tableResult.csv || tableResult.headers?.length || tableResult.rows?.length) ? (
+                      <pre className="rounded-xl bg-white p-3 text-xs text-gray-700 border border-gray-200 overflow-x-auto">{tableResult.csv}</pre>
+                    ) : null}
+                  </div>
+                )}
+
+                {activeTool === 'quiz' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Brain className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Flashcards & Quiz</h4>
+                    </div>
+                    <button onClick={handleGenerateQuiz} disabled={!text || quizLoading} className="w-full bg-violet-600 text-white py-2.5 rounded-xl font-medium">
+                      {quizLoading ? 'Generating...' : 'Create Study Flashcards'}
+                    </button>
+                    {quizResult.length > 0 && (
+                      <div className="space-y-2">
+                        {quizResult.map((item, idx) => (
+                          <div key={idx} className="rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">
+                            <div className="font-semibold text-gray-900">Q: {item.question}</div>
+                            <div className="mt-1 text-violet-700">A: {item.answer}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTool === 'correction' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <PenLine className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Inpainting-style Corrections</h4>
+                    </div>
+                    <textarea value={correctionText} onChange={(e) => setCorrectionText(e.target.value)} className="w-full h-20 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm" placeholder="Type a correction such as 'replace 'meeting' with 'workshop''" />
+                    <button onClick={handleApplyCorrection} disabled={!text || !correctionText || correctionLoading} className="w-full bg-amber-600 text-white py-2.5 rounded-xl font-medium">
+                      {correctionLoading ? 'Applying...' : 'Apply Correction'}
+                    </button>
+                    {correctionOutput && <div className="rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">{correctionOutput}</div>}
+                  </div>
+                )}
+
+                {activeTool === 'certificate' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <ShieldCheck className="w-4 h-4 text-blue-600" />
+                      <h4 className="font-semibold text-gray-900">Authenticity Certificate</h4>
+                    </div>
+                    <button onClick={handleDownloadCertificate} disabled={!text} className="w-full bg-gray-900 text-white py-2.5 rounded-xl font-medium">
+                      Download Verified PDF
+                    </button>
                   </div>
                 )}
               </div>
