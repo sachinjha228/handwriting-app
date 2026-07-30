@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { 
   Upload, FileText, Download, Loader2, CheckCircle, FilePlus, 
   Zap, Copy, Check, History, X, Trash2, Globe, Camera, Sparkles,
-  ArrowLeft, Users, MonitorPlay
+  ArrowLeft, Users, MonitorPlay, MessageSquareText, Volume2, Tags
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -31,6 +31,14 @@ export default function App() {
   const [selectedLanguage, setSelectedLanguage] = useState('English');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [view, setView] = useState('home');
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [analysisPrompt, setAnalysisPrompt] = useState('Summarize these notes into 3 key action items.');
+  const [analysisAnswer, setAnalysisAnswer] = useState('');
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [isSplitView, setIsSplitView] = useState(true);
+  const [tags, setTags] = useState([]);
+  const [category, setCategory] = useState('General');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Camera States & Ref
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -51,12 +59,13 @@ export default function App() {
   };
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      setFile(selectedFile);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setFile(files[0]);
+      setSelectedFiles(files);
       setError('');
-      if (selectedFile.type.startsWith('image/')) {
-        setPreviewUrl(URL.createObjectURL(selectedFile));
+      if (files[0].type.startsWith('image/')) {
+        setPreviewUrl(URL.createObjectURL(files[0]));
       } else {
         setPreviewUrl(null);
       }
@@ -114,14 +123,15 @@ export default function App() {
 
   // --- API Handlers ---
   const handleTranscribe = async () => {
-    if (!file) return;
-    
-    const currentFileName = file.name; 
+    if (!file && selectedFiles.length === 0) return;
+
+    const currentFileName = file?.name || selectedFiles.map((item) => item.name).join(', ');
     setLoading(true);
     setError('');
 
     const formData = new FormData();
-    formData.append('file', file);
+    selectedFiles.forEach((item) => formData.append('files', item));
+    if (!selectedFiles.length && file) formData.append('files', file);
     formData.append('language', selectedLanguage);
 
     try {
@@ -137,8 +147,9 @@ export default function App() {
 
       const data = await response.json();
       setText(data.text);
+      setTags(data.tags || []);
+      setCategory(data.category || 'General');
 
-      // Save successful conversion to history
       const newEntry = {
         id: Date.now(),
         fileName: currentFileName,
@@ -203,6 +214,48 @@ export default function App() {
       a.click();
     } catch (err) {
       alert('Export failed!');
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!text) return;
+    setAnalysisLoading(true);
+    setAnalysisAnswer('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, prompt: analysisPrompt }),
+      });
+
+      if (!response.ok) throw new Error('Analysis failed');
+      const data = await response.json();
+      setAnalysisAnswer(data.answer);
+    } catch (err) {
+      setAnalysisAnswer('Unable to analyze notes right now.');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleSpeak = () => {
+    if (!text) return;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = selectedLanguage === 'English' ? 'en-US' : 'en-US';
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const handleStopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
     }
   };
 
@@ -317,7 +370,7 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               
               {/* Upload & Camera Section */}
-              <section className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between">
+              <section className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4">
             <div>
               {/* Header with Camera Action */}
               <div className="flex items-center justify-between mb-6">
@@ -377,19 +430,19 @@ export default function App() {
                   <>
                     <FilePlus className="w-12 h-12 text-gray-400 group-hover:text-blue-600 mb-4" />
                     <span className="text-base text-gray-700 font-semibold">Click to upload image/PDF</span>
-                    <span className="text-sm text-gray-400 mt-2">PNG, JPG, JPEG, or PDF</span>
+                    <span className="text-sm text-gray-400 mt-2">PNG, JPG, JPEG, or PDF. You can add multiple files at once.</span>
                   </>
                 )}
-                <input type="file" onChange={handleFileChange} accept="image/*,.pdf" className="hidden" />
+                <input type="file" onChange={handleFileChange} accept="image/*,.pdf" multiple className="hidden" />
               </label>
 
-              {file && (
-                <div className="mt-6 flex items-center justify-between text-sm text-emerald-800 bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+              {(file || selectedFiles.length > 0) && (
+                <div className="mt-6 text-sm text-emerald-800 bg-emerald-50 p-4 rounded-xl border border-emerald-100">
                   <div className="flex items-center space-x-3 truncate">
                     <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                    <span className="truncate font-medium">{file.name}</span>
+                    <span className="truncate font-medium">{(selectedFiles.length > 0 ? selectedFiles : [file]).map((item) => item?.name).join(', ')}</span>
                   </div>
-                  <span className="text-xs bg-emerald-200/60 text-emerald-900 font-bold px-2.5 py-1 rounded-lg ml-2 flex-shrink-0">
+                  <span className="text-xs bg-emerald-200/60 text-emerald-900 font-bold px-2.5 py-1 rounded-lg ml-2 flex-shrink-0 inline-block mt-2">
                     {selectedLanguage}
                   </span>
                 </div>
@@ -404,8 +457,8 @@ export default function App() {
 
             <button
               onClick={handleTranscribe}
-              disabled={!file || loading}
-              className="w-full mt-8 bg-blue-600 text-white font-semibold py-4 rounded-2xl hover:bg-blue-700 disabled:opacity-40 transition flex flex-col items-center justify-center text-base shadow-md"
+              disabled={!file && selectedFiles.length === 0 || loading}
+              className="w-full mt-2 bg-blue-600 text-white font-semibold py-4 rounded-2xl hover:bg-blue-700 disabled:opacity-40 transition flex flex-col items-center justify-center text-base shadow-md"
             >
               <div className="flex items-center">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin mr-3" /> : <FileText className="w-5 h-5 mr-3" />}
@@ -432,16 +485,51 @@ export default function App() {
                 </div>
               </div>
 
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="AI-extracted text will appear here. Correct any errors or run AI Cleanup before exporting..."
-                className="w-full h-80 p-5 border border-gray-200 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-base font-sans resize-none bg-gray-50 focus:bg-white"
-              ></textarea>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2 text-sm text-gray-600">
+                  <Tags className="w-4 h-4 text-blue-600" />
+                  <span>Category: <strong>{category}</strong></span>
+                </div>
+                <button onClick={() => setIsSplitView((v) => !v)} className="text-sm text-blue-600 font-semibold">
+                  {isSplitView ? 'Hide split view' : 'Show split view'}
+                </button>
+              </div>
+
+              {isSplitView ? (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="border border-gray-200 rounded-2xl p-3 bg-gray-50">
+                    <p className="text-xs uppercase tracking-[0.25em] text-gray-500 mb-2">Source Preview</p>
+                    {previewUrl ? (
+                      <img src={previewUrl} alt="Source preview" className="w-full h-56 object-contain rounded-xl bg-white" />
+                    ) : (
+                      <div className="w-full h-56 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-sm">Upload a page to preview it here.</div>
+                    )}
+                  </div>
+                  <textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="AI-extracted text will appear here. Correct any errors or run AI Cleanup before exporting..."
+                    className="w-full h-80 p-5 border border-gray-200 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-base font-sans resize-none bg-gray-50 focus:bg-white"
+                  ></textarea>
+                </div>
+              ) : (
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="AI-extracted text will appear here. Correct any errors or run AI Cleanup before exporting..."
+                  className="w-full h-80 p-5 border border-gray-200 rounded-3xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-base font-sans resize-none bg-gray-50 focus:bg-white"
+                ></textarea>
+              )}
               
               <div className="mt-3 flex items-center justify-between text-xs text-gray-400 px-2 font-medium">
                 <span>Words: {text.trim() ? text.trim().split(/\s+/).length : 0}</span>
                 <span>Characters: {text.length}</span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <span key={tag} className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">#{tag}</span>
+                ))}
               </div>
             </div>
 
@@ -482,6 +570,51 @@ export default function App() {
                   </>
                 )}
               </button>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleSpeak}
+                  disabled={!text}
+                  className="flex-1 bg-amber-500 text-white font-semibold py-3 rounded-2xl hover:bg-amber-600 disabled:opacity-40 transition flex items-center justify-center text-base"
+                >
+                  <Volume2 className="w-5 h-5 mr-2" />
+                  {isSpeaking ? 'Speaking...' : 'Listen to Notes'}
+                </button>
+
+                {isSpeaking && (
+                  <button
+                    onClick={handleStopSpeaking}
+                    className="sm:w-auto w-full bg-gray-800 text-white font-semibold py-3 px-4 rounded-2xl hover:bg-gray-900 transition flex items-center justify-center text-base"
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 p-4 bg-gray-50">
+                <div className="flex items-center space-x-2 mb-2">
+                  <MessageSquareText className="w-4 h-4 text-blue-600" />
+                  <h4 className="font-semibold text-gray-900">Ask My Notes</h4>
+                </div>
+                <textarea
+                  value={analysisPrompt}
+                  onChange={(e) => setAnalysisPrompt(e.target.value)}
+                  className="w-full h-20 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                  placeholder="Summarize this meeting note into 3 action items..."
+                />
+                <button
+                  onClick={handleAnalyze}
+                  disabled={!text || analysisLoading}
+                  className="w-full mt-3 bg-indigo-600 text-white font-semibold py-3 rounded-2xl hover:bg-indigo-700 disabled:opacity-40 transition"
+                >
+                  {analysisLoading ? 'Thinking...' : 'Ask AI'}
+                </button>
+                {analysisAnswer && (
+                  <div className="mt-3 rounded-xl bg-white p-3 text-sm text-gray-700 border border-gray-200">
+                    {analysisAnswer}
+                  </div>
+                )}
+              </div>
 
               {/* Export Buttons */}
               <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-1">
